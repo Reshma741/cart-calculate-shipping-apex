@@ -1,0 +1,114 @@
+global with sharing class CustomPromotionsCalculator 
+extends CartExtension.PromotionsCartCalculator {
+ 
+    private static final Integer TARGET_QTY = 12;
+ 
+    global override void calculate(
+        CartExtension.CartCalculateCalculatorRequest request
+    ) {
+ 
+        CartExtension.Cart cart = request.getCart();
+        if (cart == null) return;
+ 
+        // 🔥 FULL RESET
+        resetAllAdjustments(cart);
+ 
+        Integer totalQty = 0;
+ 
+        Iterator<CartExtension.CartItem> items = cart.getCartItems().iterator();
+ 
+        while (items.hasNext()) {
+            CartExtension.CartItem item = items.next();
+ 
+            if (item.getQuantity() != null) {
+                totalQty += item.getQuantity().intValue();
+            }
+        }
+ 
+        if (totalQty >= TARGET_QTY) {
+            applyDiscount(cart);
+        }
+    }
+ 
+    // 🔥 RESET METHOD (FIXED ITERATOR)
+    private static void resetAllAdjustments(CartExtension.Cart cart) {
+ 
+        // 🔹 Remove cart-level adjustments (FIXED)
+        Iterator<CartExtension.CartAdjustmentGroup> cagIter =
+            cart.getCartAdjustmentGroups().iterator();
+ 
+        List<CartExtension.CartAdjustmentGroup> cagToRemove =
+            new List<CartExtension.CartAdjustmentGroup>();
+ 
+        while (cagIter.hasNext()) {
+            cagToRemove.add(cagIter.next());
+        }
+ 
+        for (CartExtension.CartAdjustmentGroup cag : cagToRemove) {
+            cart.getCartAdjustmentGroups().remove(cag);
+        }
+ 
+        // 🔹 Remove item-level adjustments + reset totals
+        Iterator<CartExtension.CartItem> itemIterator = cart.getCartItems().iterator();
+ 
+        while (itemIterator.hasNext()) {
+ 
+            CartExtension.CartItem item = itemIterator.next();
+ 
+            Iterator<CartExtension.CartItemPriceAdjustment> adjIter =
+                item.getCartItemPriceAdjustments().iterator();
+ 
+            List<CartExtension.CartItemPriceAdjustment> toRemove =
+                new List<CartExtension.CartItemPriceAdjustment>();
+ 
+            while (adjIter.hasNext()) {
+                toRemove.add(adjIter.next());
+            }
+ 
+            for (CartExtension.CartItemPriceAdjustment adj : toRemove) {
+                item.getCartItemPriceAdjustments().remove(adj);
+            }
+ 
+            // Reset totals
+            item.setTotalPromoAdjustmentAmount(0);
+            item.setTotalAdjustmentAmount(0);
+ 
+            Decimal baseAmount = item.getSalesPrice() * item.getQuantity();
+            item.setTotalPriceAfterAllAdjustments(baseAmount);
+        }
+    }
+ 
+    // 🔹 Apply 10% discount
+    private static void applyDiscount(CartExtension.Cart cart) {
+ 
+        Iterator<CartExtension.CartItem> items = cart.getCartItems().iterator();
+ 
+        while (items.hasNext()) {
+ 
+            CartExtension.CartItem item = items.next();
+ 
+            Decimal lineAmount = item.getSalesPrice() * item.getQuantity();
+ 
+            Decimal discount = lineAmount * -0.10;
+ 
+            CartExtension.CartItemPriceAdjustment adj =
+                new CartExtension.CartItemPriceAdjustment(
+                    CartExtension.CartAdjustmentTargetTypeEnum.ITEM,
+                    discount,
+                    CartExtension.PriceAdjustmentSourceEnum.PROMOTION,
+                    CartExtension.AdjustmentTypeEnum.ADJUSTMENT_AMOUNT,
+                    discount,
+                    null
+                );
+ 
+            adj.setPriority(1);
+            adj.setDescription('10% Bulk Discount');
+ 
+            item.getCartItemPriceAdjustments().add(adj);
+ 
+            item.setTotalPromoAdjustmentAmount(discount);
+            item.setTotalAdjustmentAmount(discount);
+            item.setTotalPriceAfterAllAdjustments(lineAmount + discount);
+        }
+    }
+}
