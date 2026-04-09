@@ -1,0 +1,93 @@
+global class CartCalculateSample extends CartExtension.CartCalculate {
+
+    // Default constructor
+    global CartCalculateSample() {}
+
+    // Constructor for testing
+    global CartCalculateSample(final CartExtension.CartCalculateExecutorMock apexExecutor) {
+        super(apexExecutor);
+    }
+
+    // Main calculate method
+    global virtual override void calculate(CartExtension.CartCalculateOrchestratorRequest request) {
+        CartExtension.Cart cart = request.getCart();
+
+        // Determine which calculators to run
+        CartExtension.BuyerActions buyerActions = request.getBuyerActions();
+        boolean runPricing = buyerActions.isCheckoutStarted() || buyerActions.isCartItemChanged();
+        boolean runPromotions = buyerActions.isCheckoutStarted() || buyerActions.isCouponChanged() || buyerActions.isCartItemChanged();
+        boolean runInventory = buyerActions.isCheckoutStarted();
+        boolean runShipping = buyerActions.isDeliveryGroupChanged();
+        boolean runPostShipping = buyerActions.isDeliveryGroupChanged() || buyerActions.isDeliveryMethodSelected();
+        boolean runTaxes = buyerActions.isDeliveryGroupChanged() || buyerActions.isDeliveryMethodSelected();
+
+        // Prepare request and validation list
+        CartExtension.CartCalculateCalculatorRequest calculatorRequest = new CartExtension.CartCalculateCalculatorRequest(cart, request.getOptionalBuyerActionDetails());
+        CartExtension.CartValidationOutputList cvoList = cart.getCartValidationOutputs();
+
+        if (runPricing) {
+            prices(calculatorRequest);
+
+            if (hasErrorLevelCartValidationOutput(cvoList, CartExtension.CartValidationOutputTypeEnum.PRICING)) {
+                return;
+            }
+        }
+
+        if (runPromotions) {
+            promotions(calculatorRequest);
+
+            if (hasErrorLevelCartValidationOutput(cvoList, CartExtension.CartValidationOutputTypeEnum.PROMOTIONS)) {
+                return;
+            }
+        }
+
+        if (runInventory) {
+            inventory(calculatorRequest);
+
+            if (hasErrorLevelCartValidationOutput(cvoList, CartExtension.CartValidationOutputTypeEnum.INVENTORY)) {
+                return;
+            }
+        }
+
+        if (runShipping) {
+            shipping(calculatorRequest);
+
+            if (hasErrorLevelCartValidationOutput(cvoList, CartExtension.CartValidationOutputTypeEnum.SHIPPING)) {
+                return;
+            }
+        }
+
+        if (runPostShipping) {
+            postShipping(calculatorRequest);
+
+            if (hasErrorLevelCartValidationOutput(cvoList, CartExtension.CartValidationOutputTypeEnum.SYSTEM_ERROR)) {
+                return;
+            }
+        }
+
+        if (runTaxes) {
+            taxes(calculatorRequest);
+        }
+    }
+
+    // Check if errors exist for a calculator type
+    private Boolean hasErrorLevelCartValidationOutput(
+        CartExtension.CartValidationOutputList cartValidationOutputs,
+        CartExtension.CartValidationOutputTypeEnum cartValidationOutputType
+    ) {
+        Iterator<CartExtension.CartValidationOutput> iterator = cartValidationOutputs.iterator();
+
+        while (iterator.hasNext()) {
+            CartExtension.CartValidationOutput cvo = iterator.next();
+
+            Boolean hasError = cvo.getType() == cartValidationOutputType
+                && cvo.getLevel() == CartExtension.CartValidationOutputLevelEnum.ERROR;
+
+            if (hasError) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
